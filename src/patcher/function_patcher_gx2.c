@@ -20,6 +20,7 @@
 #include "../utils/function_patcher.h"
 #include "../utils/logger.h"
 #include "function_patcher_gx2.h"
+#include "function_patcher_vpad.h"
 #include <gd.h>
 #include <string.h> // memcpy()
 
@@ -33,7 +34,7 @@ void *bufferedImageData = NULL;
 
 declareFunctionHook(void, GX2CopyColorBufferToScanBuffer, const GX2ColorBuffer *colorBuffer, s32
 		scan_target) {
-	if (executionCounter > 120) {
+	/*if (executionCounter > 120) {
 		GX2Surface surface = colorBuffer->surface;
 		log_printf("GX2CopyColorBufferToScanBuffer {surface width:%d, height:%d, image size:%d, image data:%x}\n",
 				   surface.width, surface.height, surface.image_size, surface.image_data);
@@ -61,7 +62,7 @@ declareFunctionHook(void, GX2CopyColorBufferToScanBuffer, const GX2ColorBuffer *
 
 			shouldTakeScreenShot = false;
 		}
-		/*s32 format = surface.format;
+		s32 format = surface.format;
 
 		gdImagePtr gdImagePtr = 0;
 		bool no_convert;
@@ -84,18 +85,31 @@ declareFunctionHook(void, GX2CopyColorBufferToScanBuffer, const GX2ColorBuffer *
 			jpeg.img_size = imd_size;
 			jpeg.img_data = data;
 			jpeg.img_id = 0;
-		}*/
+		}
 
 		executionCounter = 0;
 	}
 
-	executionCounter++;
+	executionCounter++;*/
+
+	if(drcSwapped) {
+		switch (scan_target)
+		{
+		case 0x1:
+			scan_target = 0x4;
+			break;
+		
+		case 0x4:
+			scan_target = 0x1;
+			break;
+		}
+	}
 
 	real_GX2CopyColorBufferToScanBuffer(colorBuffer, scan_target);
 }
 
 FunctionHook method_hooks_gx2[] __attribute__((section(".data"))) = {
-		// makeFunctionHook(GX2CopyColorBufferToScanBuffer, LIB_GX2, STATIC_FUNCTION)
+		makeFunctionHook(GX2CopyColorBufferToScanBuffer, LIB_GX2, STATIC_FUNCTION)
 };
 
 u32 method_hooks_size_gx2 __attribute__((section(".data"))) = sizeof(method_hooks_gx2) / sizeof(FunctionHook);

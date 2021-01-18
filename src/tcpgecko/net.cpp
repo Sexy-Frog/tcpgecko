@@ -46,10 +46,9 @@ void cafiine_disconnect(int sock) {
 int cafiine_handshake(int sock) {
 	int ret;
 
-	unsigned char buffer[16];
-
 	u64 title_id = OSGetTitleID();
-	memcpy(buffer, &title_id, 16);
+	unsigned char buffer[16];
+	memcpy(buffer, &title_id, sizeof(title_id));
 
 	ret = sendwait(sock, buffer, sizeof(buffer));
 	CHECK_ERROR(ret < 0);
@@ -528,27 +527,20 @@ void log_string(int sock, const char *str, char flag_byte) {
 	if (sock == -1) {
 		return;
 	}
+
 	while (iLock)
 		usleep(5000);
 	iLock = 1;
 
-	int i;
-	int len_str = 0;
-	len_str++;
-	// while (str[len_str++]);
+    int str_length = strlen(str);
 
-	//
-	{
-		char buffer[1 + 4 + len_str];
-		buffer[0] = flag_byte;
-		*(int *) (buffer + 1) = len_str;
-		for (i = 0; i < len_str; i++)
-			buffer[5 + i] = str[i];
-
-		buffer[5 + i] = 0;
-
-		sendwait(sock, buffer, 1 + 4 + len_str);
-	}
+	char buffer[1 + 4 + 512];
+	buffer[0] = flag_byte;
+	*(int *)(buffer + 1) = str_length;
+	memcpy(buffer + 5, str, str_length < 512 ? str_length : 511);
+	buffer[1 + 4 + 511] = 0; // end of string
+	
+	sendwait(sock, buffer, 1 + 4 + (str_length < 512 ? str_length + 1: 512));
 
 	iLock = 0;
 }

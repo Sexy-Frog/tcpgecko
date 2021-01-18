@@ -6,7 +6,7 @@ extern "C" {
 #endif
 
 #define DEBUG_LOGGER        1
-#define COMPUTER_IP_ADDRESS "192.168.2.103"
+#define COMPUTER_IP_ADDRESS "192.168.10.6"
 
 #ifdef DEBUG_LOGGER
 void log_init(const char * ip);

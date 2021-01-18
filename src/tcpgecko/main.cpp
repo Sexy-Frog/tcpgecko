@@ -19,12 +19,16 @@
 #include "../utils/function_patcher.h"
 #include "../patcher/function_patcher_gx2.h"
 #include "../patcher/function_patcher_coreinit.h"
+#include "../patcher/function_patcher_vpad.h"
 #include "sd_ip_reader.h"
 #include "title.h"
 #include "tcp_gecko.h"
 
 bool isCodeHandlerInstalled = false;
 bool areSDCheatsEnabled = false;
+bool isScreenSwapEnabled = false;
+bool isCodeHandlerEnabled = false;
+bool isAppliedFunctionPatches = false;
 
 typedef enum {
 	EXIT,
@@ -34,9 +38,24 @@ typedef enum {
 void applyFunctionPatches() {
 	patchIndividualMethodHooks(method_hooks_gx2, method_hooks_size_gx2, method_calls_gx2);
 	patchIndividualMethodHooks(method_hooks_coreinit, method_hooks_size_coreinit, method_calls_coreinit);
+	if(isScreenSwapEnabled) {
+		patchIndividualMethodHooks(method_hooks_vpad, method_hooks_size_vpad, method_calls_coreinit);
+	}
+
+	isAppliedFunctionPatches = true;
+}
+
+void restoreOriginalFunctions() {
+	restoreIndividualInstructions(method_hooks_gx2, method_hooks_size_gx2);
+	restoreIndividualInstructions(method_hooks_coreinit, method_hooks_size_coreinit);
+	restoreIndividualInstructions(method_hooks_vpad, method_hooks_size_vpad);
 }
 
 void installCodeHandler() {
+	if(!isCodeHandlerEnabled) {
+		return;
+	}
+
 	unsigned int physicalCodeHandlerAddress = (unsigned int) OSEffectiveToPhysical(
 			(void *) CODE_HANDLER_INSTALL_ADDRESS);
 	SC0x25_KernelCopyData((u32) physicalCodeHandlerAddress, (unsigned int) codeHandler, codeHandlerLength);
@@ -88,6 +107,10 @@ int Menu_Main(void) {
 			   strcasecmp("ffl_app.rpx", cosAppXmlInfoStruct.rpx_name) != 0) {
 
 		return EXIT_RELAUNCH_ON_LOAD;
+	} else if(strcasecmp("homebrew_launcher.rpx", cosAppXmlInfoStruct.rpx_name) == 0) {
+		return EXIT_RELAUNCH_ON_LOAD;
+	} else if(strcasecmp("hachihachi_ntr.rpx", cosAppXmlInfoStruct.rpx_name) == 0) {
+		return EXIT_RELAUNCH_ON_LOAD;
 	}
 
 	//! *******************************************************************
@@ -129,6 +152,20 @@ int Menu_Main(void) {
 	int shouldUpdateScreen = 1;
 	s32 vpadError = -1;
 	VPADData vpad_data;
+	
+	bool wait_button_released = false;
+	int cursorLine = 0;
+	struct {
+		bool enabled;
+		const char *description;
+	} options[] = {
+		{true, "Enable Cheat-code handler."},
+		{false, "Enable SD Cheats."},
+		{true, "Enable Screen swapping."},
+		//{false, "Enbale Audio swapping."}
+	};
+	
+	int options_count = sizeof(options) / sizeof(options[0]);
 
 	while (true) {
 		VPADRead(0, &vpad_data, 1, &vpadError);
@@ -144,15 +181,36 @@ int Menu_Main(void) {
 			__os_snprintf(ipAddressMessageBuffer, 64, "Your Wii U's IP address: %i.%i.%i.%i",
 						  (hostIpAddress >> 24) & 0xFF, (hostIpAddress >> 16) & 0xFF, (hostIpAddress >> 8) & 0xFF,
 						  hostIpAddress & 0xFF);
+						  
+			int line = 0;
 
-			PRINT_TEXT(14, 1, "-- TCP Gecko Installer --")
-			PRINT_TEXT(7, 2, ipAddressMessageBuffer)
-			PRINT_TEXT(0, 5, "Press A to install TCP Gecko (with built-in code handler)...")
-			PRINT_TEXT(0, 6, "Press X to install TCP Gecko (with code handler and SD cheats)...")
-
-			PRINT_TEXT(0, 8, "Note:")
-			PRINT_TEXT(0, 9, "* You can enable loading SD cheats with Mocha SD access")
-			PRINT_TEXT(0, 10, "* Generate and store GCTUs to your SD card with JGecko U")
+			line++;
+			PRINT_TEXT(10, line, "-- TCP Gecko (kzmod) Installer --")
+			line++;
+			PRINT_TEXT(7, line, ipAddressMessageBuffer);
+			line++;
+			line++;
+			PRINT_TEXT(0, line, "Press PLUS to install TCP Gecko.")
+			line++;
+			
+			for(int i = 0; i < options_count; i++) {
+				if(i == cursorLine)
+					PRINT_TEXT(1, line, ">");
+				PRINT_TEXT(3, line, options[i].enabled ? "[x]" : "[ ]");
+				PRINT_TEXT(7, line, options[i].description);
+				line++;
+			}
+			
+			line++;
+			PRINT_TEXT(0, line, "Note:")
+			line++;
+			PRINT_TEXT(0, line, "* You can enable loading SD cheats with Mocha SD access")
+			line++;
+			PRINT_TEXT(0, line, "* Generate and store GCTUs to your SD card with JGecko U")
+			line++;
+			if(DEBUG_LOGGER) {
+				PRINT_TEXT(0, line, "Logging enabled, " COMPUTER_IP_ADDRESS);
+			}
 
 			// testMount();
 			/*if (isSDAccessEnabled()) {
@@ -170,26 +228,37 @@ int Menu_Main(void) {
 		u32 pressedButtons = vpad_data.btns_d | vpad_data.btns_h;
 
 		// Home Button
-		if (pressedButtons & VPAD_BUTTON_HOME) {
-			launchMethod = EXIT;
-
-			break;
-		} else if (pressedButtons & VPAD_BUTTON_A) {
-			install();
-			launchMethod = TCP_GECKO;
-
-			break;
-		} else if (pressedButtons & VPAD_BUTTON_X) {
-			install();
-			launchMethod = TCP_GECKO;
-			areSDCheatsEnabled = true;
-
-			break;
+		if(!wait_button_released) {
+			if (pressedButtons & VPAD_BUTTON_HOME) {
+				launchMethod = EXIT;
+	
+				break;
+			} else if (pressedButtons & VPAD_BUTTON_A) {
+				// Toggle selected option enabled
+				options[cursorLine].enabled ^= true;
+				wait_button_released = true;
+				
+			} else if (pressedButtons & VPAD_BUTTON_PLUS) {
+				isCodeHandlerEnabled = options[0].enabled;
+				areSDCheatsEnabled = options[1].enabled;
+				isScreenSwapEnabled = options[2].enabled;
+				install();
+				launchMethod = TCP_GECKO;
+				break;
+			} else if(pressedButtons & VPAD_BUTTON_UP) {
+				if(cursorLine > 0) cursorLine--;
+				wait_button_released = true;
+			} else if(pressedButtons & VPAD_BUTTON_DOWN) {
+				if(cursorLine < options_count - 1) cursorLine++;
+				wait_button_released = true;
+			}
+		} else if(pressedButtons == 0) {
+			wait_button_released = false;
 		}
 
 		// Button pressed?
 		shouldUpdateScreen = (pressedButtons &
-							  (VPAD_BUTTON_LEFT | VPAD_BUTTON_RIGHT | VPAD_BUTTON_UP | VPAD_BUTTON_DOWN)) ? 1 : 0;
+							  (VPAD_BUTTON_A | VPAD_BUTTON_LEFT | VPAD_BUTTON_RIGHT | VPAD_BUTTON_UP | VPAD_BUTTON_DOWN)) ? 1 : 0;
 		usleep(20 * 1000);
 	}
 
@@ -202,6 +271,7 @@ int Menu_Main(void) {
 
 	if (launchMethod == EXIT) {
 		// Exit the installer
+		restoreOriginalFunctions();
 		return EXIT_SUCCESS;
 	} else {
 		// Launch system menu

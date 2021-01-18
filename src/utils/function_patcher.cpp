@@ -216,6 +216,7 @@ bool isDynamicFunction(unsigned int physicalAddress) {
 unsigned int getRPLHandle(int library, const char *functionName) {
 	unsigned int rplHandle = 0;
 	u32 gx2_handle = 0;
+	u32 vpad_handle = 0;
 
 	switch (library) {
 		case LIB_CORE_INIT:
@@ -309,9 +310,11 @@ unsigned int getRPLHandle(int library, const char *functionName) {
 			}
 			rplHandle = sysapp_handle;
 			break;
+			*/
 
 		case LIB_VPAD:
 			if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_VPAD\n", functionName);
+			OSDynLoad_Acquire("vpad.rpl", &vpad_handle);
 			if (vpad_handle == 0) {
 				log_print("LIB_VPAD not acquired\n");
 				return 0;
@@ -319,6 +322,7 @@ unsigned int getRPLHandle(int library, const char *functionName) {
 			rplHandle = vpad_handle;
 			break;
 
+		/*
 		case LIB_NN_ACP:
 			if (DEBUG_LOG_DYN)log_printf("FindExport of %s! From LIB_NN_ACP\n", functionName);
 			if (acp_handle == 0) {
